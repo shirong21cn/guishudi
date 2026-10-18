@@ -1,5 +1,4 @@
 # 编译产物
-*.exe
 *.dcu
 *.res
 *.dproj.local
