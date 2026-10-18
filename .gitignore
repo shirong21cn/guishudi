@@ -1,0 +1,17 @@
+# 编译产物
+*.exe
+*.dcu
+*.res
+*.dproj.local
+__pycache__/
+__history__/
+
+# 备用数据格式（体积大且未使用；号段库统一用 phone_location.csv）
+phone_location.db
+phone_location.json
+phone_location.sql
+
+# 查询生成的结果文件
+*_已标注*.csv
+*_按运营商统计.csv
+*_按归属省统计.csv
