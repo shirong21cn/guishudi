@@ -11,9 +11,6 @@ guishudi\
 ├── 1.txt.csv               测试数据
 ├── phone_query.py          Python 命令行版主程序
 ├── phone_location.csv      号段库（本工具实际使用，约 45MB / 67 万+ 条）
-├── phone_location.db       号段库 SQLite 版（备用，未使用）
-├── phone_location.json     号段库 JSON 版（备用，未使用）
-├── phone_location.sql      号段库 SQL 导入脚本（备用，未使用）
 ├── 归属地查询.exe           Delphi 版编译产物，双击即用（需号段库在同目录）
 ├── README.md               本说明文档
 └── delphi\                 Delphi 13 (RAD Studio 13) 源码工程
