@@ -35,9 +35,11 @@ type
     tsDetail: TTabSheet;
     tsIsp: TTabSheet;
     tsProvince: TTabSheet;
+    tsCity: TTabSheet;
     grdDetail: TStringGrid;
     grdIsp: TStringGrid;
     grdProvince: TStringGrid;
+    grdCity: TStringGrid;
     sbMain: TStatusBar;
     dlgOpen: TOpenDialog;
     dlgSave: TSaveDialog;
@@ -59,8 +61,7 @@ type
     procedure LoadPhoneDb;
     function DetectFileEncoding(const AFileName: string): TEncoding;
     function ReadCsvFile(const AFileName: string): TArray<TArray<string>>;
-    function ReadXlsxFile(const AFileName: string): TArray<TArray<string>>;
-    function ReadXlsFile(const AFileName: string): TArray<TArray<string>>;
+    function ReadExcelFile(const AFileName: string): TArray<TArray<string>>;
     function SplitCsvLine(const ALine: string): TArray<string>;
     function NormalizeNumber(const AValue: string): string;
     function CsvEscape(const AValue: string): string;
@@ -81,9 +82,7 @@ implementation
 {$R *.dfm}
 
 uses
-  Excel4Delphi, Excel4Delphi.Stream,
-  XLSReadWriteII5, XLSReadWriteIIVCL5, XLSSheetData5, Xc12Utils5,
-  BIFF_Stream_VCL5,
+  XLSReadWriteII5, XLSSheetData5, Xc12Utils5,
   PasteForm;
 
 { ---------- Form events ---------- }
@@ -336,62 +335,8 @@ begin
   end;
 end;
 
-function TfrmMain.ReadXlsxFile(const AFileName: string): TArray<TArray<string>>;
-var
-  wb: TZWorkBook;
-  sheet: TZSheet;
-  cell: TZCell;
-  fs: TFileStream;
-  r, c, rMax, cMax: Integer;
-  list: TList<TArray<string>>;
-  row: TArray<string>;
-  v: string;
-  f: Double;
-begin
-  wb := TZWorkBook.Create(nil);
-  try
-    // 注意：ReadXLSXPath 是读"解包目录"的；读 .xlsx 文件必须走流版 ReadXLSXFile
-    fs := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
-    try
-      // 注意：本方法名 ReadXlsxFile 与库函数 ReadXLSXFile 不区分大小写会冲突，必须加单元名限定
-      if Excel4Delphi.Stream.ReadXLSXFile(wb, fs) <> 0 then
-        raise Exception.Create('无法解析 Excel 文件（仅支持 .xlsx 格式）');
-    finally
-      fs.Free;
-    end;
-    if wb.Sheets.Count = 0 then
-      raise Exception.Create('Excel 文件中没有工作表');
-    sheet := wb.Sheets[0];
-    rMax := sheet.RowCount;
-    cMax := sheet.ColCount;
-    list := TList<TArray<string>>.Create;
-    try
-      for r := 0 to rMax - 1 do
-      begin
-        SetLength(row, cMax);
-        for c := 0 to cMax - 1 do
-        begin
-          cell := sheet.Cell[c, r]; // 注意：Cell[列, 行]
-          v := Trim(cell.Data);
-          // 数字单元格若为整数（如手机号被存为数字），还原为完整数字串
-          if (cell.CellType = ZENumber) and (v <> '') then
-            if TryStrToFloat(v, f) and (Frac(f) = 0) then
-              v := FormatFloat('0', f);
-          row[c] := v;
-        end;
-        list.Add(row);
-      end;
-      Result := list.ToArray;
-    finally
-      list.Free;
-    end;
-  finally
-    wb.Free;
-  end;
-end;
-
-{ 读取旧版 .xls（BIFF 二进制格式）：Excel4Delphi 不支持，改用已安装的 XLSSuit7 }
-function TfrmMain.ReadXlsFile(const AFileName: string): TArray<TArray<string>>;
+// 读取 Excel（.xls/.xlsx 统一走 XLSReadWriteII，LoadFromFile 按扩展名/文件头自动识别格式）
+function TfrmMain.ReadExcelFile(const AFileName: string): TArray<TArray<string>>;
 var
   xls: TXLSReadWriteII5;
   sheet: TXLSWorksheet;
@@ -404,8 +349,9 @@ begin
   xls := TXLSReadWriteII5.Create(nil);
   list := TList<TArray<string>>.Create;
   try
-    xls.Filename := AFileName;
-    xls.Read;
+    xls.LoadFromFile(AFileName);
+    if xls.Count = 0 then
+      raise Exception.Create('Excel 文件中没有工作表');
     sheet := xls[0]; // 只读第一个工作表
     rMax := sheet.LastRow + 1;
     cMax := sheet.LastCol + 1;
@@ -414,7 +360,7 @@ begin
       SetLength(row, cMax);
       for c := 0 to cMax - 1 do
       begin
-        v := Trim(sheet.AsString[c, r]);
+        v := Trim(sheet.AsString[c, r]); // 注意：AsString[列, 行]
         // 数字单元格若为整数（如手机号被存为数字），还原为完整数字串
         if (sheet.CellType[c, r] in [xctFloat, xctFloatFormula]) and (v <> '') then
         begin
@@ -456,10 +402,8 @@ begin
   ext := LowerCase(ExtractFileExt(edtFile.Text));
   Screen.Cursor := crHourGlass;
   try
-    if ext = '.xlsx' then
-      all := ReadXlsxFile(edtFile.Text)
-    else if ext = '.xls' then
-      all := ReadXlsFile(edtFile.Text)
+    if (ext = '.xlsx') or (ext = '.xls') then
+      all := ReadExcelFile(edtFile.Text)
     else
       all := ReadCsvFile(edtFile.Text);
   except
@@ -496,6 +440,8 @@ begin
   grdIsp.ColCount := 1;
   grdProvince.RowCount := 2;
   grdProvince.ColCount := 1;
+  grdCity.RowCount := 2;
+  grdCity.ColCount := 1;
 
   Status(Format('文件已加载，共 %d 行，%d 列', [Length(FRows), Length(FHeaders)]));
   Screen.Cursor := crDefault;
@@ -616,9 +562,9 @@ end;
 procedure TfrmMain.BuildStats;
 var
   n: Integer;
-  dIsp, dProv: TDictionary<string, Integer>;
+  dIsp, dProv, dCity: TDictionary<string, Integer>;
   i, total: Integer;
-  k: string;
+  k, kp, kc: string;
   comp: IComparer<TPair<string, Integer>>;
   procedure FillGrid(AGrid: TStringGrid; const ATitle: string;
                      const ADict: TDictionary<string, Integer>);
@@ -643,10 +589,39 @@ var
       AGrid.Cells[2, rr + 1] := FormatFloat('0.00', p) + '%';
     end;
   end;
+  // 按归属市统计：额外显示所属的归属省
+  procedure FillCityGrid(AGrid: TStringGrid;
+                         const ADict: TDictionary<string, Integer>);
+  var
+    a: TArray<TPair<string, Integer>>;
+    parts: TArray<string>;
+    rr: Integer;
+    p: Double;
+  begin
+    a := ADict.ToArray;
+    TArray.Sort<TPair<string, Integer>>(a, comp);
+    AGrid.RowCount := Length(a) + 1;
+    AGrid.ColCount := 4;
+    AGrid.FixedRows := 1;
+    AGrid.Cells[0, 0] := '归属省';
+    AGrid.Cells[1, 0] := '归属市';
+    AGrid.Cells[2, 0] := '数量';
+    AGrid.Cells[3, 0] := '占比';
+    for rr := 0 to High(a) do
+    begin
+      parts := SplitString(a[rr].Key, #9); // 组合键拆回 归属省 / 归属市
+      AGrid.Cells[0, rr + 1] := parts[0];
+      AGrid.Cells[1, rr + 1] := parts[1];
+      AGrid.Cells[2, rr + 1] := IntToStr(a[rr].Value);
+      p := IfThen(total = 0, 0, a[rr].Value * 100.0 / total);
+      AGrid.Cells[3, rr + 1] := FormatFloat('0.00', p) + '%';
+    end;
+  end;
 begin
   n := Length(FHeaders);
   dIsp := TDictionary<string, Integer>.Create;
   dProv := TDictionary<string, Integer>.Create;
+  dCity := TDictionary<string, Integer>.Create;
   try
     total := Length(FOutRows);
     for i := 0 to High(FOutRows) do
@@ -664,6 +639,15 @@ begin
         dProv[k] := dProv[k] + 1
       else
         dProv.Add(k, 1);
+
+      kp := k;
+      kc := FOutRows[i][n + 1];  // 归属市
+      if kc = '' then kc := '未知';
+      k := kp + #9 + kc;         // 省 + 市 组合键
+      if dCity.ContainsKey(k) then
+        dCity[k] := dCity[k] + 1
+      else
+        dCity.Add(k, 1);
     end;
 
     comp := TComparer<TPair<string, Integer>>.Construct(
@@ -674,9 +658,11 @@ begin
 
     FillGrid(grdIsp, '运营商', dIsp);
     FillGrid(grdProvince, '归属省', dProv);
+    FillCityGrid(grdCity, dCity);
   finally
     dIsp.Free;
     dProv.Free;
+    dCity.Free;
   end;
 end;
 
@@ -707,32 +693,20 @@ end;
 
 procedure TfrmMain.SaveGridToXlsx(AGrid: TStringGrid; const AFileName: string);
 var
-  wb: TZWorkBook;
-  sheet: TZSheet;
-  fs: TFileStream;
+  xls: TXLSReadWriteII5;
+  sheet: TXLSWorksheet;
   r, c: Integer;
 begin
-  wb := TZWorkBook.Create(nil);
+  xls := TXLSReadWriteII5.Create(nil);
   try
-    sheet := wb.Sheets.Add('Sheet1');
-    sheet.RowCount := AGrid.RowCount;
-    sheet.ColCount := AGrid.ColCount;
+    xls.Version := xvExcel2007; // 输出 .xlsx
+    sheet := xls[0];
     for r := 0 to AGrid.RowCount - 1 do
       for c := 0 to AGrid.ColCount - 1 do
-      begin
-        sheet.Cell[c, r].Data := AGrid.Cells[c, r]; // 注意：Cell[列, 行]
-        sheet.Cell[c, r].CellType := ZEString;
-      end;
-    // 注意：SaveXmlssToXLSXPath 是写"解包目录"的；写 .xlsx 文件必须走流版 SaveXmlssToXLSX
-    fs := TFileStream.Create(AFileName, fmCreate);
-    try
-      if SaveXmlssToXLSX(wb, fs, [], [], nil, 'UTF-8') <> 0 then
-        raise Exception.Create('写入 Excel 文件失败');
-    finally
-      fs.Free;
-    end;
+        sheet.AsString[c, r] := AGrid.Cells[c, r]; // 注意：AsString[列, 行]
+    xls.SaveToFile(AFileName, xvExcel2007);
   finally
-    wb.Free;
+    xls.Free;
   end;
 end;
 
@@ -753,6 +727,11 @@ begin
   begin
     AGrid := grdProvince;
     ASuffix := '_按归属省统计';
+  end
+  else if pcMain.ActivePage = tsCity then
+  begin
+    AGrid := grdCity;
+    ASuffix := '_按归属市统计';
   end
   else
   begin
