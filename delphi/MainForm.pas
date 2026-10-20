@@ -4,7 +4,7 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages,
-  System.SysUtils, System.Variants, System.Classes, System.StrUtils,
+  System.SysUtils, System.Classes, System.StrUtils,
   System.Generics.Collections, System.Generics.Defaults,
   System.IOUtils, System.Math,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
@@ -28,6 +28,7 @@ type
     btnLoad: TButton;
     btnQuery: TButton;
     btnSaveCsv: TButton;
+    btnSaveExcel: TButton;
     btnAbout: TButton;
     btnPaste: TButton;
     pcMain: TPageControl;
@@ -44,6 +45,7 @@ type
     procedure btnLoadClick(Sender: TObject);
     procedure btnQueryClick(Sender: TObject);
     procedure btnSaveCsvClick(Sender: TObject);
+    procedure btnSaveExcelClick(Sender: TObject);
     procedure btnAboutClick(Sender: TObject);
     procedure btnPasteClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
@@ -58,10 +60,13 @@ type
     function DetectFileEncoding(const AFileName: string): TEncoding;
     function ReadCsvFile(const AFileName: string): TArray<TArray<string>>;
     function ReadXlsxFile(const AFileName: string): TArray<TArray<string>>;
+    function ReadXlsFile(const AFileName: string): TArray<TArray<string>>;
     function SplitCsvLine(const ALine: string): TArray<string>;
     function NormalizeNumber(const AValue: string): string;
     function CsvEscape(const AValue: string): string;
     procedure SaveGridToCsv(AGrid: TStringGrid; const AFileName: string);
+    procedure SaveGridToXlsx(AGrid: TStringGrid; const AFileName: string);
+    function GetSaveTarget(out AGrid: TStringGrid; out ASuffix: string): Boolean;
     procedure FillDetailGrid;
     procedure BuildStats;
     procedure Status(const AMsg: string);
@@ -76,7 +81,9 @@ implementation
 {$R *.dfm}
 
 uses
-  System.Win.ComObj,
+  Excel4Delphi, Excel4Delphi.Stream,
+  XLSReadWriteII5, XLSReadWriteIIVCL5, XLSSheetData5, Xc12Utils5,
+  BIFF_Stream_VCL5,
   PasteForm;
 
 { ---------- Form events ---------- }
@@ -89,8 +96,6 @@ begin
     '表格文件 (*.csv;*.xlsx;*.xls)|*.csv;*.xlsx;*.xls|' +
     'CSV 文件 (*.csv)|*.csv|' +
     'Excel 文件 (*.xlsx;*.xls)|*.xlsx;*.xls';
-  dlgSave.Filter := 'CSV 文件 (*.csv)|*.csv';
-  dlgSave.DefaultExt := 'csv';
   sbMain.SimplePanel := True;
   sbMain.SimpleText := '就绪';
 end;
@@ -333,57 +338,97 @@ end;
 
 function TfrmMain.ReadXlsxFile(const AFileName: string): TArray<TArray<string>>;
 var
-  excel, wb, ws, data: OleVariant;
+  wb: TZWorkBook;
+  sheet: TZSheet;
+  cell: TZCell;
+  fs: TFileStream;
   r, c, rMax, cMax: Integer;
   list: TList<TArray<string>>;
   row: TArray<string>;
-  v: Variant;
+  v: string;
+  f: Double;
 begin
+  wb := TZWorkBook.Create(nil);
   try
-    excel := CreateOleObject('Excel.Application');
-  except
-    raise Exception.Create('无法创建 Excel 对象，请确认已安装 Microsoft Excel。');
-  end;
-  list := TList<TArray<string>>.Create;
-  try
-    excel.Visible := False;
-    excel.DisplayAlerts := False;
-    wb := excel.Workbooks.Open(AFileName, 0, True);
+    // 注意：ReadXLSXPath 是读"解包目录"的；读 .xlsx 文件必须走流版 ReadXLSXFile
+    fs := TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone);
     try
-      ws := wb.Worksheets[1];
-      data := ws.UsedRange.Value2;
-      if VarIsArray(data) then
+      // 注意：本方法名 ReadXlsxFile 与库函数 ReadXLSXFile 不区分大小写会冲突，必须加单元名限定
+      if Excel4Delphi.Stream.ReadXLSXFile(wb, fs) <> 0 then
+        raise Exception.Create('无法解析 Excel 文件（仅支持 .xlsx 格式）');
+    finally
+      fs.Free;
+    end;
+    if wb.Sheets.Count = 0 then
+      raise Exception.Create('Excel 文件中没有工作表');
+    sheet := wb.Sheets[0];
+    rMax := sheet.RowCount;
+    cMax := sheet.ColCount;
+    list := TList<TArray<string>>.Create;
+    try
+      for r := 0 to rMax - 1 do
       begin
-        rMax := VarArrayHighBound(data, 1);
-        cMax := VarArrayHighBound(data, 2);
-        for r := 1 to rMax do
+        SetLength(row, cMax);
+        for c := 0 to cMax - 1 do
         begin
-          SetLength(row, cMax);
-          for c := 1 to cMax do
-          begin
-            v := data[r, c];
-            if VarIsEmpty(v) or VarIsNull(v) then
-              row[c - 1] := ''
-            else if VarIsFloat(v) then
-              row[c - 1] := FormatFloat('0.######', v)
-            else
-              row[c - 1] := VarToStrDef(v, '');
-          end;
-          list.Add(row);
+          cell := sheet.Cell[c, r]; // 注意：Cell[列, 行]
+          v := Trim(cell.Data);
+          // 数字单元格若为整数（如手机号被存为数字），还原为完整数字串
+          if (cell.CellType = ZENumber) and (v <> '') then
+            if TryStrToFloat(v, f) and (Frac(f) = 0) then
+              v := FormatFloat('0', f);
+          row[c] := v;
         end;
-      end
-      else
-      begin
-        SetLength(row, 1);
-        row[0] := VarToStrDef(data, '');
         list.Add(row);
       end;
+      Result := list.ToArray;
     finally
-      wb.Close(False);
+      list.Free;
     end;
   finally
-    excel.Quit;
+    wb.Free;
+  end;
+end;
+
+{ 读取旧版 .xls（BIFF 二进制格式）：Excel4Delphi 不支持，改用已安装的 XLSSuit7 }
+function TfrmMain.ReadXlsFile(const AFileName: string): TArray<TArray<string>>;
+var
+  xls: TXLSReadWriteII5;
+  sheet: TXLSWorksheet;
+  r, c, rMax, cMax: Integer;
+  list: TList<TArray<string>>;
+  row: TArray<string>;
+  v: string;
+  f: Double;
+begin
+  xls := TXLSReadWriteII5.Create(nil);
+  list := TList<TArray<string>>.Create;
+  try
+    xls.Filename := AFileName;
+    xls.Read;
+    sheet := xls[0]; // 只读第一个工作表
+    rMax := sheet.LastRow + 1;
+    cMax := sheet.LastCol + 1;
+    for r := 0 to rMax - 1 do
+    begin
+      SetLength(row, cMax);
+      for c := 0 to cMax - 1 do
+      begin
+        v := Trim(sheet.AsString[c, r]);
+        // 数字单元格若为整数（如手机号被存为数字），还原为完整数字串
+        if (sheet.CellType[c, r] in [xctFloat, xctFloatFormula]) and (v <> '') then
+        begin
+          f := sheet.AsFloat[c, r];
+          if Frac(f) = 0 then
+            v := FormatFloat('0', f);
+        end;
+        row[c] := v;
+      end;
+      list.Add(row);
+    end;
     Result := list.ToArray;
+  finally
+    xls.Free;
     list.Free;
   end;
 end;
@@ -411,8 +456,10 @@ begin
   ext := LowerCase(ExtractFileExt(edtFile.Text));
   Screen.Cursor := crHourGlass;
   try
-    if (ext = '.xlsx') or (ext = '.xls') then
+    if ext = '.xlsx' then
       all := ReadXlsxFile(edtFile.Text)
+    else if ext = '.xls' then
+      all := ReadXlsFile(edtFile.Text)
     else
       all := ReadCsvFile(edtFile.Text);
   except
@@ -658,41 +705,102 @@ begin
   end;
 end;
 
+procedure TfrmMain.SaveGridToXlsx(AGrid: TStringGrid; const AFileName: string);
+var
+  wb: TZWorkBook;
+  sheet: TZSheet;
+  fs: TFileStream;
+  r, c: Integer;
+begin
+  wb := TZWorkBook.Create(nil);
+  try
+    sheet := wb.Sheets.Add('Sheet1');
+    sheet.RowCount := AGrid.RowCount;
+    sheet.ColCount := AGrid.ColCount;
+    for r := 0 to AGrid.RowCount - 1 do
+      for c := 0 to AGrid.ColCount - 1 do
+      begin
+        sheet.Cell[c, r].Data := AGrid.Cells[c, r]; // 注意：Cell[列, 行]
+        sheet.Cell[c, r].CellType := ZEString;
+      end;
+    // 注意：SaveXmlssToXLSXPath 是写"解包目录"的；写 .xlsx 文件必须走流版 SaveXmlssToXLSX
+    fs := TFileStream.Create(AFileName, fmCreate);
+    try
+      if SaveXmlssToXLSX(wb, fs, [], [], nil, 'UTF-8') <> 0 then
+        raise Exception.Create('写入 Excel 文件失败');
+    finally
+      fs.Free;
+    end;
+  finally
+    wb.Free;
+  end;
+end;
+
+function TfrmMain.GetSaveTarget(out AGrid: TStringGrid; out ASuffix: string): Boolean;
+begin
+  Result := Length(FOutRows) > 0;
+  if not Result then
+  begin
+    Status('没有可保存的数据，请先查询');
+    Exit;
+  end;
+  if pcMain.ActivePage = tsIsp then
+  begin
+    AGrid := grdIsp;
+    ASuffix := '_按运营商统计';
+  end
+  else if pcMain.ActivePage = tsProvince then
+  begin
+    AGrid := grdProvince;
+    ASuffix := '_按归属省统计';
+  end
+  else
+  begin
+    AGrid := grdDetail;
+    ASuffix := '_已标注';
+  end;
+end;
+
 procedure TfrmMain.btnSaveCsvClick(Sender: TObject);
 var
   baseName, suffix: string;
   grid: TStringGrid;
 begin
-  if Length(FOutRows) = 0 then
-  begin
-    Status('没有可保存的数据，请先查询');
-    Exit;
-  end;
-
+  if not GetSaveTarget(grid, suffix) then Exit;
   baseName := ChangeFileExt(ExtractFileName(edtFile.Text), '');
   if baseName = '' then
     baseName := '粘贴数据';
-  if pcMain.ActivePage = tsIsp then
-  begin
-    grid := grdIsp;
-    suffix := '_按运营商统计';
-  end
-  else if pcMain.ActivePage = tsProvince then
-  begin
-    grid := grdProvince;
-    suffix := '_按归属省统计';
-  end
-  else
-  begin
-    grid := grdDetail;
-    suffix := '_已标注';
-  end;
-
-  dlgSave.FileName := baseName + suffix;
+  dlgSave.Filter := 'CSV 文件 (*.csv)|*.csv';
+  dlgSave.DefaultExt := 'csv';
+  dlgSave.FileName := baseName + suffix + '.csv';
   if not dlgSave.Execute then Exit;
+  try
+    SaveGridToCsv(grid, dlgSave.FileName);
+    Status('已保存: ' + dlgSave.FileName);
+  except
+    on E: Exception do Status('保存失败: ' + E.Message);
+  end;
+end;
 
-  SaveGridToCsv(grid, dlgSave.FileName);
-  Status('已保存: ' + dlgSave.FileName);
+procedure TfrmMain.btnSaveExcelClick(Sender: TObject);
+var
+  baseName, suffix: string;
+  grid: TStringGrid;
+begin
+  if not GetSaveTarget(grid, suffix) then Exit;
+  baseName := ChangeFileExt(ExtractFileName(edtFile.Text), '');
+  if baseName = '' then
+    baseName := '粘贴数据';
+  dlgSave.Filter := 'Excel 文件 (*.xlsx)|*.xlsx';
+  dlgSave.DefaultExt := 'xlsx';
+  dlgSave.FileName := baseName + suffix + '.xlsx';
+  if not dlgSave.Execute then Exit;
+  try
+    SaveGridToXlsx(grid, dlgSave.FileName);
+    Status('已保存: ' + dlgSave.FileName);
+  except
+    on E: Exception do Status('保存失败: ' + E.Message);
+  end;
 end;
 
 procedure TfrmMain.btnAboutClick(Sender: TObject);
