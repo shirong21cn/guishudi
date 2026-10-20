@@ -1,4 +1,4 @@
-unit PasteForm;
+﻿unit PasteForm;
 
 interface
 

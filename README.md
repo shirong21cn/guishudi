@@ -62,7 +62,7 @@ python phone_query.py data.csv 电话 -o result.xlsx
 
 工程：`delphi\PhoneQuery.dpr`（VCL 应用，含 `MainForm`、`PasteForm` 两个单元）
 
-**准备**：编译后将 `phone_location.csv` 放到 exe 同目录；不在时会弹框手动选择，只需选一次。
+**准备**：编译依赖 [Excel4Delphi](https://github.com/DelphiComponents/Excel4Delphi)（zexmlss 的分支改名版），将其 `source` 目录加入 IDE 的 Library Path 即可，无需安装组件包；读取旧版 .xls 另需本机已安装的 XLSSuit7（仅用其读取，写入不用）；编译后将 `phone_location.csv` 放到 exe 同目录，不在时会弹框手动选择，只需选一次。
 
 **界面操作**：
 
@@ -70,14 +70,15 @@ python phone_query.py data.csv 电话 -o result.xlsx
 2. 在下拉框选择号码所在列 → `查询归属地`，状态栏显示匹配进度与成功率
 3. 或使用「直接粘贴」：弹窗中每行粘贴一个手机号（不含列名），确定后立即查询
 4. 结果区三个页签均为可见表格：明细（源列+4 列）/ 按运营商统计 / 按归属省统计（按数量降序）
-5. `另存CSV` 按当前激活页签导出对应内容，默认文件名分别为 `原名_已标注.csv`、`_按运营商统计.csv`、`_按归属省统计.csv`；粘贴模式下文件名为 `粘贴数据_*.csv`
+5. `另存CSV` / `另存Excel` 按当前激活页签导出对应内容，默认文件名分别为 `原名_已标注.*`、`_按运营商统计.*`、`_按归属省统计.*`；粘贴模式下文件名为 `粘贴数据_*.*`
 6. 「关于」显示作者信息
 
 **说明**：
 
-- Excel 文件通过 COM 接口读取，需安装 Microsoft Excel；纯 CSV 无任何外部依赖
+- Excel 文件（.xlsx）通过 **Excel4Delphi** 组件读写，**不再需要安装 Microsoft Excel**；旧版 .xls（BIFF 二进制格式）通过 **XLSSuit7** 读取（已实测 5 万行无截断；试用版仅写入时 A1 有水印，读取无限制，本程序只用其读取）
 - 输入 CSV 编码自动识别：先探测 BOM，无 BOM 时严格校验 UTF-8，否则回退系统 ANSI(GBK)
 - 导出的 CSV 统一为 UTF-8 带 BOM，Excel 直接打开不乱码
+- 另存 Excel 统一输出 .xlsx（Excel4Delphi 写）
 
 **作者**：老皮　QQ 30922884　[www.2pascal.com　github/shirong21cn](http://www.2pascal.com　github/shirong21cn)
 

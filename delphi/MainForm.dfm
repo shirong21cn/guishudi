@@ -1,4 +1,4 @@
-object frmMain: TfrmMain
+﻿object frmMain: TfrmMain
   Left = 0
   Top = 0
   Caption = #25163#26426#21495#24402#23646#22320#25209#37327#26597#35810
@@ -85,13 +85,22 @@ object frmMain: TfrmMain
       TabOrder = 5
       OnClick = btnSaveCsvClick
     end
-    object btnAbout: TButton
+    object btnSaveExcel: TButton
       Left = 552
+      Top = 40
+      Width = 90
+      Height = 25
+      Caption = #21478#23384'Excel'
+      TabOrder = 6
+      OnClick = btnSaveExcelClick
+    end
+    object btnAbout: TButton
+      Left = 650
       Top = 40
       Width = 60
       Height = 25
       Caption = #20851#20110
-      TabOrder = 6
+      TabOrder = 7
       OnClick = btnAboutClick
     end
     object btnPaste: TButton
@@ -100,7 +109,7 @@ object frmMain: TfrmMain
       Width = 80
       Height = 25
       Caption = #30452#25509#31896#36148
-      TabOrder = 7
+      TabOrder = 8
       OnClick = btnPasteClick
     end
   end

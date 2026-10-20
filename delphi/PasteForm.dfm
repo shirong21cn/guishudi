@@ -1,4 +1,4 @@
-object frmPaste: TfrmPaste
+﻿object frmPaste: TfrmPaste
   Left = 0
   Top = 0
   BorderStyle = bsDialog
