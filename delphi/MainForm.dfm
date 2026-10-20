@@ -168,6 +168,22 @@
         TabOrder = 0
       end
     end
+    object tsCity: TTabSheet
+      Caption = #25353#24402#23646#24066#32479#35745
+      ImageIndex = 3
+      object grdCity: TStringGrid
+        Left = 0
+        Top = 0
+        Width = 1000
+        Height = 514
+        Align = alClient
+        ColCount = 4
+        DefaultColWidth = 120
+        RowCount = 2
+        Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goRangeSelect, goColSizing, goRowSelect]
+        TabOrder = 0
+      end
+    end
   end
   object sbMain: TStatusBar
     Left = 0
