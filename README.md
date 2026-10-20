@@ -11,9 +11,6 @@ guishudi\
 ├── 1.txt.csv               测试数据
 ├── phone_query.py          Python 命令行版主程序
 ├── phone_location.csv      号段库（本工具实际使用，约 45MB / 67 万+ 条）
-├── phone_location.db       号段库 SQLite 版（备用，未使用）
-├── phone_location.json     号段库 JSON 版（备用，未使用）
-├── phone_location.sql      号段库 SQL 导入脚本（备用，未使用）
 ├── 归属地查询.exe           Delphi 版编译产物，双击即用（需号段库在同目录）
 ├── README.md               本说明文档
 └── delphi\                 Delphi 13 (RAD Studio 13) 源码工程
@@ -85,3 +82,6 @@ python phone_query.py data.csv 电话 -o result.xlsx
 ## 数据来源
 
 号段库来自 GitHub 开源项目 [ggwork/phone\_location](https://github.com/ggwork/phone_location)，本工具仅使用其中的 `phone_location.csv` 做离线查询，未对数据做任何修改。数据的准确性、时效性以原项目为准。
+
+这个东西是trae加deepseek弄的，不知道为什么贡献者变成了克劳德。声明下。
+
