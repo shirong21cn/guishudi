@@ -51,7 +51,7 @@ python phone_query.py data.csv 电话 -o result.xlsx
 **输出**：
 
 - 默认生成 `原名_已标注.后缀`，在源数据后追加 4 列：`归属省`、`归属市`、`运营商`、`邮编`
-- Excel 输出含 3 个 sheet：明细 / 按运营商统计 / 按归属省统计
+- Excel 输出含 4 个 sheet：明细 / 按运营商统计 / 按归属省统计 / 按归属市统计
 - CSV 输出额外生成 `原名_已标注_统计.csv`
 - 统计结果同时在控制台打印，CSV 为 UTF-8 带 BOM（Excel 直接打开不乱码）
 
@@ -84,4 +84,3 @@ python phone_query.py data.csv 电话 -o result.xlsx
 号段库来自 GitHub 开源项目 [ggwork/phone\_location](https://github.com/ggwork/phone_location)，本工具仅使用其中的 `phone_location.csv` 做离线查询，未对数据做任何修改。数据的准确性、时效性以原项目为准。
 
 这个东西是trae加deepseek弄的，不知道为什么贡献者变成了克劳德。声明下。
-

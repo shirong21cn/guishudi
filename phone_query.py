@@ -61,10 +61,12 @@ def make_stats(df):
                 .reset_index(name="数量").sort_values("数量", ascending=False))
     by_prov = (df.groupby("归属省", dropna=False).size()
                  .reset_index(name="数量").sort_values("数量", ascending=False))
-    for t in (by_isp, by_prov):
+    by_city = (df.groupby(["归属省", "归属市"], dropna=False).size()
+                 .reset_index(name="数量").sort_values("数量", ascending=False))
+    for t in (by_isp, by_prov, by_city):
         total = t["数量"].sum()
         t["占比"] = (t["数量"] / total * 100).round(2).astype(str) + "%"
-    return by_isp, by_prov
+    return by_isp, by_prov, by_city
 
 
 def main():
@@ -96,13 +98,14 @@ def main():
     else:
         out_path = in_path.with_name(f"{in_path.stem}_已标注{in_path.suffix}")
 
-    by_isp, by_prov = make_stats(df)
+    by_isp, by_prov, by_city = make_stats(df)
 
     if out_path.suffix.lower() in (".xlsx", ".xls"):
         with pd.ExcelWriter(out_path) as w:
             df.to_excel(w, index=False, sheet_name="明细")
             by_isp.to_excel(w, index=False, sheet_name="按运营商统计")
             by_prov.to_excel(w, index=False, sheet_name="按归属省统计")
+            by_city.to_excel(w, index=False, sheet_name="按归属市统计")
     else:
         df.to_csv(out_path, index=False, encoding="utf-8-sig")
         stats_path = out_path.with_name(f"{out_path.stem}_统计.csv")
@@ -111,6 +114,8 @@ def main():
             by_isp.to_csv(f, index=False)
             f.write("\n=== 按归属省统计 ===\n")
             by_prov.to_csv(f, index=False)
+            f.write("\n=== 按归属市统计 ===\n")
+            by_city.to_csv(f, index=False)
         print(f"统计文件: {stats_path}")
 
     matched = (df["运营商"] != "未知").sum()
@@ -122,6 +127,8 @@ def main():
     print(by_isp.to_string(index=False))
     print("\n===== 按归属省统计 =====")
     print(by_prov.to_string(index=False))
+    print("\n===== 按归属市统计 =====")
+    print(by_city.to_string(index=False))
 
 
 if __name__ == "__main__":
